@@ -1,0 +1,99 @@
+#!/bin/bash
+
+APP_NAME="${0}"
+IDLE_CONTAINER_SHUTDOWN_TIME=30
+if [ $(echo "${APP_NAME}" | grep -c "lxc-run-X-app") -gt 0 ]; then
+  APP_NAME="${1}"
+fi
+if [ "${APP_NAME}" == "" ]; then
+  echo "ERROR: Which app should I execute?" 1>&2
+  exit 1
+fi
+APP_NAME=$(basename "${APP_NAME}")
+
+# Find and source the relevant config file
+if [ -e "${HOME}/.config/lxc-run-X-app/${APP_NAME}" ]; then
+  echo "Settings from ${HOME}/.config/lxc-run-X-app/${APP_NAME}"
+  source "${HOME}/.config/lxc-run-X-app/${APP_NAME}"
+elif [ -e "/etc/lxc-run-X-app/${APP_NAME}" ]; then
+  echo "Settings from /etc/lxc-run-X-app/${APP_NAME}"
+  source "/etc/lxc-run-X-app/${APP_NAME}"
+else
+  echo "ERROR: Application '${APP_NAME}' is unknown."
+  exit 1
+fi
+
+# Check that the minimum required values have been set
+if [ "${CONTAINER_NAME}" == "" ]; then
+  echo "ERROR: CONTAINER_NAME not specified in config file."
+fi
+if [ "${CONTAINER_USER}" == "" ]; then
+  CONTAINER_USER=$(whoami)
+fi
+
+# Check that the container exists
+CONTAINER_LIST=$(lxc list --fast | awk '{print $2}' | grep -v -e '^$' -e '^|' | tail -n +2)
+for THIS_CONTAINER in ${CONTAINER_LIST}; do
+  if [ "${THIS_CONTAINER}" == "${CONTAINER_NAME}" ]; then
+    TARGET_CONTAINER="${THIS_CONTAINER}"
+  fi
+done
+if [ "${TARGET_CONTAINER}" == "" ]; then
+  echo "ERROR: Container '${CONTAINER_NAME}' not found."
+  exit 1
+fi
+
+# See if the target container is running
+if [ $(lxc list --fast | grep " ${TARGET_CONTAINER} " | grep -c " RUNNING ") -lt 1 ]; then
+  echo "Starting container '${TARGET_CONTAINER}'."
+  lxc start "${CONTAINER_NAME}"
+fi
+
+# Record our current PID in a temp file.  When all the PIDS in this file no
+#  longer exist, the container can be shut down.
+if [ ! -d /tmp/.lxc-run-X-app-$(whoami) ]; then
+  mkdir -p /tmp/.lxc-run-X-app-$(whoami)
+  chown $(whoami):$(whoami) /tmp/.lxc-run-X-app-$(whoami)
+  chmod 700 /tmp/.lxc-run-X-app-$(whoami)
+fi
+MY_PID=${$}
+echo "${MY_PID}" >>/tmp/.lxc-run-X-app-$(whoami)/${CONTAINER_NAME}
+
+# Run the Application
+lxc exec "${CONTAINER_NAME}" -- run-X-app "${CONTAINER_USER}" ${APP_COMMAND_LINE}
+
+# Remove our PID from the temp file
+cat /tmp/.lxc-run-X-app-$(whoami)/${CONTAINER_NAME} | grep -v "^${MY_PID}\$" >/tmp/.lxc-run-X-app-$(whoami)/${CONTAINER_NAME}.tmp
+mv /tmp/.lxc-run-X-app-$(whoami)/${CONTAINER_NAME}.tmp /tmp/.lxc-run-X-app-$(whoami)/${CONTAINER_NAME}
+
+# Remove invalid PIDs from the temp file
+while true; do
+  touch /tmp/.lxc-run-X-app-$(whoami)/${CONTAINER_NAME}.tmp
+  cat /tmp/.lxc-run-X-app-$(whoami)/${CONTAINER_NAME} | while read THIS_PID; do
+    if [ $(ps -x |sed 's/^[ ]*//g' | grep -c "^${THIS_PID} ") -lt 1 ]; then
+      echo "${THIS_PID} is no longer running."
+    else
+      echo "${THIS_PID}" >>/tmp/.lxc-run-X-app-$(whoami)/${CONTAINER_NAME}.tmp
+    fi
+  done
+  mv /tmp/.lxc-run-X-app-$(whoami)/${CONTAINER_NAME}.tmp /tmp/.lxc-run-X-app-$(whoami)/${CONTAINER_NAME}
+
+  if [ $( cat /tmp/.lxc-run-X-app-$(whoami)/${CONTAINER_NAME} | grep -v '^$' | wc -l) -gt 0 ]; then
+    exit 0
+  else
+    if [ "${NO_PROCESSES_TIME}" == "" ]; then
+      echo "No processes are running in ${CONTAINER_NAME} any more.  It can probably be shut down."
+      NO_PROCESSES_TIME=$(date +%s)
+    elif [ $(date +%s) -gt $(( $NO_PROCESSES_TIME + $IDLE_CONTAINER_SHUTDOWN_TIME )) ]; then
+      echo "Shutting down ${CONTAINER_NAME}."
+      lxc stop ${CONTAINER_NAME}
+      exit 0
+    elif [ $(lxc list --fast | grep " ${CONTAINER_NAME} " | grep -c " RUNNING ") -lt 1 ]; then
+      echo "Container has shutdown."
+      exit 0
+    else
+      echo "Shutting down ${CONTAINER_NAME} in $(( $(( $NO_PROCESSES_TIME + $IDLE_CONTAINER_SHUTDOWN_TIME )) - $(date +%s) ))s"
+    fi
+  fi
+  sleep 1
+done

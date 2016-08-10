@@ -1,0 +1,46 @@
+#!/bin/bash
+
+ACTION="${3}"
+
+# This is a crappy hack but the passed environment variable is simply wrong
+LXC_ROOTFS_MOUNT=/var/lib/lxd/containers/${LXC_NAME}/rootfs/
+
+logger -p user.info "${0} was executed!"
+logger -p user.info "LXC_NAME: ${LXC_NAME}"
+logger -p user.info "LXC_CONFIG_FILE: ${LXC_CONFIG_FILE}"
+logger -p user.info "LXC_ROOTFS_MOUNT: ${LXC_ROOTFS_MOUNT}"
+logger -p user.info "USER: $(whoami)"
+logger -p user.info "GROUPS: $(groups)"
+logger -p user.info "1: ${1}"
+logger -p user.info "2: ${2}"
+logger -p user.info "ACTION: ${ACTION}"
+
+#ls -la ${LXC_ROOTFS_MOUNT} | logger
+
+TMP_FILE=$(mktemp /tmp/.lxc-extra-mounts_${LXC_NAME}_XXXXX)
+logger -p user.info "TMP_FILE: ${TMP_FILE}"
+
+if [ "${ACTION}" == "pre-start" ] || [ "${ACTION}" == "post-stop" ]; then
+	/bin/bash -c "sqlite3 /var/lib/lxd/lxd.db \"SELECT * FROM containers_config WHERE key LIKE 'user.extra-mount%' AND container_id = (SELECT id FROM containers WHERE name = '${LXC_NAME}');\" >${TMP_FILE}" 2>&1| logger
+
+	cat "${TMP_FILE}" | while read MOUNT; do
+		MOUNT=$(echo "${MOUNT}" | awk 'BEGIN{FS="|"}{print $NF}')
+		logger -p user.info "${MOUNT}"
+		
+		SOURCE=$(echo "${MOUNT}" | awk '{print $1}')
+		DESTINATION=$(echo "${MOUNT}" | awk '{print $2}')
+		TYPE=$(echo "${MOUNT}" | awk '{print $3}')
+		OPTIONS=$(echo "${MOUNT}" | awk '{print $4}')
+	
+		if [ "${ACTION}" == "pre-start" ]; then
+			mkdir -p "${LXC_ROOTFS_MOUNT}/${DESTINATION}" |logger -p user.info
+			logger -p user.info "mount -t ${TYPE} -o ${OPTIONS} ${SOURCE} ${LXC_ROOTFS_MOUNT}/${DESTINATION}"
+			mount -t ${TYPE} -o ${OPTIONS} ${SOURCE} ${LXC_ROOTFS_MOUNT}/${DESTINATION} 2>&1 |logger -p user.info
+		elif [ "${ACTION}" == "post-stop" ]; then
+			logger -p user.info "umount -t ${LXC_ROOTFS_MOUNT}/${DESTINATION}"
+			umount ${LXC_ROOTFS_MOUNT}/${DESTINATION} 2>&1 |logger -p user.info
+		fi
+	done
+fi
+rm "${TMP_FILE}"
+exit 0

@@ -1,0 +1,33 @@
+#!/bin/bash
+
+ACTION="${3}"
+
+# This is a crappy hack but the passed environment variable is simply wrong
+LXC_ROOTFS_MOUNT=/var/lib/lxd/containers/${LXC_NAME}/rootfs/
+
+# TODO: can we enumerate home directories and apply the fix for all?
+PULSE_USERS="shaun"
+
+# Find the running PulseAudio server
+#TODO: Can there be more than one?  What if there are remote users?
+PULSE_SERVER=$(find /run/user/ 2>/dev/null|grep 'pulse/native'|tail -1)
+if [ ${PULSE_SERVER} == "" ]; then
+	logger -p user.error "Couldn't find a pulseaudio server to connect to.  Pulseaudio will not be available to this session."
+	exit 1
+else
+	logger -p user.info "Will connect to pulseaudio server at '${PULSE_SERVER}'."
+fi
+
+# Reference: https://www.stgraber.org/2014/02/09/lxc-1-0-gui-in-containers/
+for PULSE_USER in $PULSE_USERS; do
+	PULSE_PATH=$LXC_ROOTFS_PATH/home/${PULSE_USER}/.pulse_socket
+	if [ -e "$LXC_ROOTFS_PATH/home/${PULSE_USER}/.pulse_socket" ]; then
+		logger -p user.info "Pulseaudio socket '${PULSE_PATH}' already exists.  Deleting."
+		rm "${PULSE_PATH}" | logger -p user.info
+	fi
+	logger -p user.info "Enabling pulseaudio for user by creating socket '${PULSE_PATH}'."
+	if [ ! -e "$PULSE_PATH" ] || [ -z "$(lsof -n $PULSE_PATH 2>&1)" ]; then
+		pactl -s "${PULSE_SERVER}" load-module module-native-protocol-unix auth-anonymous=1 socket=$PULSE_PATH 2>&1 | logger -p user.info
+	fi
+done
+exit 0

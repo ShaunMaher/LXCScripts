@@ -13,19 +13,19 @@ APP_NAME=$(basename "${APP_NAME}")
 
 # Find and source the relevant config file
 if [ -e "${HOME}/.config/lxc-run-X-app/${APP_NAME}" ]; then
-  echo "Settings from ${HOME}/.config/lxc-run-X-app/${APP_NAME}"
+  echo "Settings from ${HOME}/.config/lxc-run-X-app/${APP_NAME}" | tee >(logger -t lxc-run-X-app) 
   source "${HOME}/.config/lxc-run-X-app/${APP_NAME}"
 elif [ -e "/etc/lxc-run-X-app/${APP_NAME}" ]; then
-  echo "Settings from /etc/lxc-run-X-app/${APP_NAME}"
+  echo "Settings from /etc/lxc-run-X-app/${APP_NAME}" | tee >(logger -t lxc-run-X-app)
   source "/etc/lxc-run-X-app/${APP_NAME}"
 else
-  echo "ERROR: Application '${APP_NAME}' is unknown."
+  echo "ERROR: Application '${APP_NAME}' is unknown." | tee >(logger -t lxc-run-X-app)
   exit 1
 fi
 
 # Check that the minimum required values have been set
 if [ "${CONTAINER_NAME}" == "" ]; then
-  echo "ERROR: CONTAINER_NAME not specified in config file."
+  echo "ERROR: CONTAINER_NAME not specified in config file." | tee >(logger -t lxc-run-X-app)
 fi
 if [ "${CONTAINER_USER}" == "" ]; then
   CONTAINER_USER=$(whoami)
@@ -39,14 +39,14 @@ for THIS_CONTAINER in ${CONTAINER_LIST}; do
   fi
 done
 if [ "${TARGET_CONTAINER}" == "" ]; then
-  echo "ERROR: Container '${CONTAINER_NAME}' not found."
+  echo "ERROR: Container '${CONTAINER_NAME}' not found." | tee >(logger -t lxc-run-X-app)
   exit 1
 fi
 
 # See if the target container is running
 if [ $(lxc list --fast | grep " ${TARGET_CONTAINER} " | grep -c " RUNNING ") -lt 1 ]; then
-  echo "Starting container '${TARGET_CONTAINER}'."
-  lxc start "${CONTAINER_NAME}"
+  echo "Starting container '${TARGET_CONTAINER}'." | tee >(logger -t lxc-run-X-app)
+  lxc start "${CONTAINER_NAME}" | tee >(logger -t lxc-run-X-app)
 fi
 
 # Record our current PID in a temp file.  When all the PIDS in this file no
@@ -59,8 +59,11 @@ fi
 MY_PID=${$}
 echo "${MY_PID}" >>/tmp/.lxc-run-X-app-$(whoami)/${CONTAINER_NAME}
 
+echo "Configuring PulseAudio" | tee >(logger -t lxc-run-X-app)
+LXC_NAME="${CONTAINER_NAME}" /usr/local/bin/lxc-enable-pulseaudio
+
 # Run the Application
-lxc exec "${CONTAINER_NAME}" -- run-X-app "${CONTAINER_USER}" ${APP_COMMAND_LINE}
+lxc exec "${CONTAINER_NAME}" -- run-X-app "${CONTAINER_USER}" ${APP_COMMAND_LINE} | tee >(logger -t lxc-run-X-app)
 
 # Remove our PID from the temp file
 cat /tmp/.lxc-run-X-app-$(whoami)/${CONTAINER_NAME} | grep -v "^${MY_PID}\$" >/tmp/.lxc-run-X-app-$(whoami)/${CONTAINER_NAME}.tmp
@@ -82,17 +85,17 @@ while true; do
     exit 0
   else
     if [ "${NO_PROCESSES_TIME}" == "" ]; then
-      echo "No processes are running in ${CONTAINER_NAME} any more.  It can probably be shut down."
+      echo "No processes are running in ${CONTAINER_NAME} any more.  It can probably be shut down." | tee >(logger -t lxc-run-X-app)
       NO_PROCESSES_TIME=$(date +%s)
     elif [ $(date +%s) -gt $(( $NO_PROCESSES_TIME + $IDLE_CONTAINER_SHUTDOWN_TIME )) ]; then
-      echo "Shutting down ${CONTAINER_NAME}."
+      echo "Shutting down ${CONTAINER_NAME}." | tee >(logger -t lxc-run-X-app)
       lxc stop ${CONTAINER_NAME}
       exit 0
     elif [ $(lxc list --fast | grep " ${CONTAINER_NAME} " | grep -c " RUNNING ") -lt 1 ]; then
-      echo "Container has shutdown."
+      echo "Container has shutdown." | tee >(logger -t lxc-run-X-app)
       exit 0
     else
-      echo "Shutting down ${CONTAINER_NAME} in $(( $(( $NO_PROCESSES_TIME + $IDLE_CONTAINER_SHUTDOWN_TIME )) - $(date +%s) ))s"
+      echo "Shutting down ${CONTAINER_NAME} in $(( $(( $NO_PROCESSES_TIME + $IDLE_CONTAINER_SHUTDOWN_TIME )) - $(date +%s) ))s" | tee >(logger -t lxc-run-X-app)
     fi
   fi
   sleep 1

@@ -1,0 +1,145 @@
+#!/bin/bash
+
+TARGET_USER="${1}"
+TARGET_APP="${2}"
+TARGET_APP_ARGS="${3}"
+HOSTNAME=$(hostname)
+
+if [ -e "/home/${TARGET_USER}/.pulse_socket" ]; then
+	echo "pulseaudio enabled."
+	PULSE_SERVER="/home/${TARGET_USER}/.pulse_socket"
+fi
+
+# Fixup Nvidia device permissions while we're still root
+NVFILES=(/dev/nvidia*)
+if [ -e "${NVFILES[0]}" ]; then
+	chmod a+rw /dev/nvidia*
+fi
+
+# We reformat the hostname that it displayed in the title bar of each window by
+#  replacing each letter with a unicode character that is a fancy italic
+#  version of that character.
+FANCY_HOSTNAME=$(echo       "${HOSTNAME}" | sed 's/a/\xF0\x9D\x91\x8E/g')	#a
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/b/\xF0\x9D\x91\x8F/g')	#b
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/c/\xF0\x9D\x91\x90/g')	#c
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/d/\xF0\x9D\x91\x91/g')       #d
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/e/\xF0\x9D\x91\x92/g')       #e
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/f/\xF0\x9D\x91\x93/g')       #f
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/g/\xF0\x9D\x91\x94/g')       #g
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/h/\xF0\x9D\x91\x95/g')       #h
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/i/\xF0\x9D\x91\x96/g')       #i
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/j/\xF0\x9D\x91\x97/g')       #j
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/k/\xF0\x9D\x91\x98/g')       #k
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/l/\xF0\x9D\x91\x99/g')       #l
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/m/\xF0\x9D\x91\x9A/g')       #m
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/n/\xF0\x9D\x91\x9B/g')       #n
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/o/\xF0\x9D\x91\x9C/g')       #o
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/p/\xF0\x9D\x91\x9D/g')       #p
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/q/\xF0\x9D\x91\x9E/g')       #q
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/r/\xF0\x9D\x91\x9F/g')       #r
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/s/\xF0\x9D\x91\xA0/g')       #s
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/t/\xF0\x9D\x91\xA1/g')       #t
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/u/\xF0\x9D\x91\xA2/g')       #u
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/v/\xF0\x9D\x91\xA3/g')       #v
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/w/\xF0\x9D\x91\xA4/g')       #w
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/x/\xF0\x9D\x91\xA5/g')       #x
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/y/\xF0\x9D\x91\xA6/g')       #y
+FANCY_HOSTNAME=$(echo "${FANCY_HOSTNAME}" | sed 's/z/\xF0\x9D\x91\xA7/g')       #z
+
+# We need to be able to check to see if our fancy reformatted hostname is in
+#  each window's titlebar.  Unfortunately xprop outputs the unicode characters
+#  differently so we need another version of the hostname formatted the xoprp
+#  way.  For extreme convienience we are dropping all of the \ characters.
+XPROC_HOSTNAME=$(echo       "${HOSTNAME}" | sed 's/a/360235221216/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/b/360235221217/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/c/360235221220/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/d/360235221221/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/e/360235221222/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/f/360235221223/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/g/360235221224/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/h/360235221225/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/i/360235221226/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/j/360235221227/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/k/360235221230/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/l/360235221231/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/m/360235221232/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/n/360235221233/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/o/360235221234/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/p/360235221235/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/q/360235221236/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/r/360235221237/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/s/360235221240/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/t/360235221241/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/u/360235221242/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/v/360235221243/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/w/360235221244/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/x/360235221245/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/y/360235221246/g')
+XPROC_HOSTNAME=$(echo "${XPROC_HOSTNAME}" | sed 's/z/360235221247/g')
+
+#echo -e "${XPROC_HOSTNAME}"
+#exit
+
+# We will use the following HEREDOC as a script that will be executed by bash
+#  INSIDE the user session.  We additionally use the "script" command to create
+#  a pseudo-tty for the session.  Without this ps returns all processes running
+#  as the target user instead of the ones in this session only.  The /dev/null
+#  at the end of the script command prevents it writing out the actual script
+#  to file.
+su -l -c "script --append --force --quiet -c \"cat - |/bin/bash\" /dev/null" "${TARGET_USER}" <<SESSION_SCRIPT
+export PULSE_SERVER=${PULSE_SERVER}
+export DISPLAY=:0
+${TARGET_APP} ${TARGET_APP_ARGS} &
+
+FANCY_HOSTNAME="${FANCY_HOSTNAME}"
+XPROC_HOSTNAME="${XPROC_HOSTNAME}"
+REMAINING_PROCESSES=\$(ps --no-headers |grep -v -e 'bash$' -e ps -e 'grep$' -e '-su$' -e 'wc$' -e '^$')
+while [ "\${REMAINING_PROCESSES}" != "" ]; do
+	#echo "\${REMAINING_PROCESSES}"
+
+	#TODO: use wmctrl to find all windows running in this session and add
+	# \${HOSTNAME} to their WM_CLASS (and title?)
+	for PID in \$(echo "\${REMAINING_PROCESSES}" | awk '{print \$1}'); do
+		wmctrl -l -p |grep -P "0x.*? \d*? \${PID}\W" | while read WINDOW_INFO; do
+			# Find the Window ID
+			WINDOW_ID=\$(echo "\${WINDOW_INFO}" | awk '{print \$1}')
+
+			# Find and parse the current WM_CLASS
+			#  Example line: 'WM_CLASS(STRING) = "JDownloader2", "Vncviewer"'
+			WM_CLASS=\$(xprop -id \${WINDOW_ID} | grep "WM_CLASS(STRING)" | awk 'BEGIN{FS=" = "}{print \$2}')
+			if [ \$(echo "\${WM_CLASS}" | grep -c ", ") -gt 0 ]; then
+				WM_CLASS=\$(echo "\${WM_CLASS}" | awk 'BEGIN{FS=", "}{print \$1}')
+			fi
+			WM_CLASS=\$(echo "\${WM_CLASS}" | sed 's/"//g')
+			#echo "\${WM_CLASS}"
+
+			# If the WM_CLASS isn't already prefixed with the \${HOSTNAME}, add the
+			#  prefix
+			if [ \$(echo "\${WM_CLASS}" | grep -c '^${HOSTNAME}:') -lt 1 ]; then
+				echo "need to update WM_CLASS on \${WINDOW_ID}"
+				xdotool set_window --classname "${HOSTNAME}:\${WM_CLASS}" \${WINDOW_ID}
+			fi
+
+			# Find and parse the current Window Title
+			WM_NAME=\$(xprop -id \${WINDOW_ID} | grep "_NET_WM_NAME(STRING)" | awk 'BEGIN{FS=" = "}{print \$2}')
+			WM_NAME=\$(echo "\${WM_NAME}" | sed 's/"//g')
+			if [ "\${WM_NAME}" == "" ]; then
+				WM_NAME=\$(xprop -id \${WINDOW_ID} | grep "WM_NAME(STRING)" | awk 'BEGIN{FS=" = "}{print \$2}')
+				WM_NAME=\$(echo "\${WM_NAME}" | sed 's/"//g')
+			fi
+
+			#echo "\${XPROC_HOSTNAME}"
+			#echo "\${WM_NAME}" | sed 's/\\\\//g'
+			if [ \$(echo "\${WM_NAME}" | sed 's/\\\\//g' | grep -c "\${XPROC_HOSTNAME}") -lt 1 ]; then
+				echo "need to update WM_NAME on \${WINDOW_ID}"
+				xdotool set_window --name "\$(echo -e "\${FANCY_HOSTNAME}") \${WM_NAME}" \${WINDOW_ID}
+			fi
+		done
+	done
+
+	sleep 0.25
+	REMAINING_PROCESSES=\$(ps --no-headers |grep -v -e 'bash$' -e ps -e 'grep$' -e '-su$' -e 'wc$' -e '^$')
+done
+echo "All session processes have exited."
+exit
+SESSION_SCRIPT

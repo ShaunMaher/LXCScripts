@@ -1,0 +1,3 @@
+CONTAINER_NAME="sandbox"
+CONTAINER_USER="shaun"
+APP_COMMAND_LINE="nautilus --no-desktop"

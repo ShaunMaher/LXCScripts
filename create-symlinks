@@ -1,5 +1,16 @@
 #!/bin/bash
 
+if [ -e /usr/local/bin/lxc-extra-mounts ]; then
+	rm /usr/local/bin/lxc-extra-mounts
+fi
+if [ -e /usr/local/bin/lxc-enable-pulseaudio ]; then
+	rm /usr/local/bin/lxc-enable-pulseaudio
+fi
+if [ -e /usr/local/bin/lxc-run-X-app ]; then
+	rm /usr/local/bin/lxc-run-X-app
+fi
 ln -s /usr/src/LXCScripts/lxc-extra-mounts /usr/local/bin/lxc-extra-mounts
+ln -s /usr/src/LXCScripts/lxc-enable-pulseaudio /usr/local/bin/lxc-enable-pulseaudio
+ln -s /usr/src/LXCScripts/lxc-run-X-app /usr/local/bin/lxc-run-X-app
 
 ln -s /usr/src/LXCScripts/usr-share-lxc-config-common.conf.d/01-extra-mounts.conf /usr/share/lxc/config/common.conf.d/01-extra-mounts.conf

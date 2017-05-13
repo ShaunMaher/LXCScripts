@@ -3,7 +3,7 @@
 ACTION="${3}"
 
 # This is a crappy hack but the passed environment variable is simply wrong
-LXC_ROOTFS_MOUNT=/var/lib/lxd/containers/${LXC_NAME}/rootfs/
+LXC_ROOTFS_PATH=/var/lib/lxd/containers/${LXC_NAME}/rootfs/
 
 # TODO: can we enumerate home directories and apply the fix for all?
 PULSE_USERS="shaun"
@@ -12,10 +12,12 @@ PULSE_USERS="shaun"
 #TODO: Can there be more than one?  What if there are remote users?
 
 while read DIR; do
-	PULSE_SERVER=$(find ${DIR} -xdev 2>/dev/null|grep 'pulse/native'|tail -1)
-done < <(find /run/user -mindepth 1 -maxdepth 1 -type d)
+	if [ $DIR -ge 1000 ]; then
+		PULSE_SERVER=$(find /run/user/${DIR} -xdev 2>/dev/null|grep 'pulse/native'|tail -1)
+	fi
+done < <(find /run/user -mindepth 1 -maxdepth 1 -type d | awk 'BEGIN{FS="/"}{print $NF}' | sort -n)
 
-if [ ${PULSE_SERVER} == "" ]; then
+if [ "${PULSE_SERVER}" == "" ]; then
 	logger -p user.error "Couldn't find a pulseaudio server to connect to.  Pulseaudio will not be available to this session."
 	exit 1
 else

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Sandboxed Chromium
+Comment=
+Exec=/home/shaun/.local/bin/sandboxed-chromium
+Icon=chromium-browser
+#StartupNotify=true
+StartupWMClass=sandboxed:chromium-browser

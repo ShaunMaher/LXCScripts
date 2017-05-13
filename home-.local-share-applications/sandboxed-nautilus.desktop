@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Sandboxed Nautilus
+Comment=
+Exec=/home/shaun/.local/bin/sandboxed-nautilus
+Icon=folder-downloads
+#StartupNotify=true
+StartupWMClass=sandbox:nautilus

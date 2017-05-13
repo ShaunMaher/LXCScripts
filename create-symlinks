@@ -1,0 +1,5 @@
+#!/bin/bash
+
+ln -s /usr/src/LXCScripts/lxc-extra-mounts /usr/local/bin/lxc-extra-mounts
+
+ln -s /usr/src/LXCScripts/usr-share-lxc-config-common.conf.d/01-extra-mounts.conf /usr/share/lxc/config/common.conf.d/01-extra-mounts.conf

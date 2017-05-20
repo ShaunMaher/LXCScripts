@@ -28,6 +28,7 @@ WIREDIF=enp2s1
 DUMMYIF=dummy0
 BRIDGEIF=brLAN
 BRIDGEIP=172.31.5.1/26
+BRIDGEDHCPRANGE="172.31.5.10,172.31.5.20,1h"
 BRIDGE_ENABLED=1
 
 # All output goes to both the console and syslog
@@ -45,6 +46,12 @@ exec 2> >(tee >(logger -t $(basename $0)) >&2)
 
 echo "\$1: $1"
 echo "\$2: $2"
+
+#TODO: this isn't working
+if [ -f "/etc/${BRIDGEIF}.conf" ]; then
+  echo "Using configuration from etc/${BRIDGEIF}.conf"
+  source /etc/${BRIDGEIF}.conf
+fi
 
 lock() {
     exec 200>/var/lock/$(basename $0).exclusivelock
@@ -195,11 +202,16 @@ case "$2" in
 				iptables -t nat -D POSTROUTING -s ${BRIDGEIP} -o ${WIRELESSIF} -j MASQUERADE
 			fi
 
-			#TODO: Convert this to mncli commands
+			# REmove the dummy interface from the bridge
 			if [ $(brctl show ${BRIDGEIF} | awk '{print $4}' | grep -c ${DUMMYIF}) -gt 0 ]; then
 				echo "Removing ${DUMMYIF} from bridge ${BRIDGEIF}"
 				bridge_del_dummy_slave
 			fi
+
+      if [ $(ifconfig -a | grep -c ${DUMMYIF}) -gt 0 ]; then
+        echo "Removing dummy interface ${DUMMYIF}"
+        modprobe -r dummy
+      fi
 
 		# If there is no wired interface, we will use the wireless interface
 		#TODO: All of the following needs to be rewritten to use nmcli instead of
@@ -209,9 +221,9 @@ case "$2" in
 				echo "Wireless is up.  Going to NAT to ${WIRELESSIF} wireless interface."
 
         # Configure the bridge to get IP details from DHCP
-  			if [ $(nmcli connection show "${BRIDGEIF}" | grep "ipv4.method" | grep -c "manual") -lt 1 ]; then
+  			if [ $(nmcli connection show "${BRIDGEIF}" | grep "ipv4.method" | grep -c "manual") -lt 1 ] ; then
   				echo "Configuring ${BRIDGEIF} to configure IPv4 via DHCP"
-  				nmcli connection modify "${BRIDGEIF}" ipv4.method manual ##TODO!
+  				nmcli connection modify "${BRIDGEIF}" ipv4.method manual ipv4.addresses ${BRIDGEIP}
   			fi
 
 				# We need the dummy0 interface.  If it doesn't
@@ -251,7 +263,7 @@ case "$2" in
 					kill $(cat /run/dnsmasq/dnsmasq-${BRIDGEIF}.pid)
 				fi
 				echo "Starting dnsmasq on ${BRIDGEIF}."
-				/usr/sbin/dnsmasq --interface=${BRIDGEIF} --bind-interfaces --listen-address=127.0.2.1 --conf-dir=/etc/NetworkManager/dnsmasq.d,/etc/dnsmasq.d --local-service -x /run/dnsmasq/dnsmasq-${BRIDGEIF}.pid --resolv-file=/var/run/resolvconf/resolv.conf --dhcp-range=172.31.4.10,172.31.4.20,1h
+				/usr/sbin/dnsmasq --interface=${BRIDGEIF} --bind-interfaces --listen-address=127.0.2.1 --conf-dir=/etc/NetworkManager/dnsmasq.d,/etc/dnsmasq.d --local-service -x /run/dnsmasq/dnsmasq-${BRIDGEIF}.pid --resolv-file=/var/run/resolvconf/resolv.conf --dhcp-range=${BRIDGEDHCPRANGE}
 			else
 				#TODO: wireless is "UP" but has no IP.  Setup for "Host Only".
 				echo "Wireless is \"UP\" but has no IP.  Setup for \"Host Only\"".

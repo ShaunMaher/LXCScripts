@@ -15,11 +15,11 @@
 ##      commands rather than legacy commands
 ##  2.  The code that removes all of the bridge configuration and restores
 ##      connections to their previous state needs a trigger condition.  Simply
-##      acting in resoinse to the bridge going "down" is insufficient as the 
+##      acting in resoinse to the bridge going "down" is insufficient as the
 ##      "down" event happens reguarly.
 ##  3.  Hard coded interface names, etc. near the top of this script could be
 ##      detected automatically and then overridden by a config file in /etc.
-## 
+##
 
 
 #TODO: I think we could find some of these settings automatically
@@ -72,11 +72,7 @@ WIREDIF_NMNAME=$(nmcli connection show | grep '802-3-ethernet' | grep 'Wired' | 
 echo "WIREDIF_NMNAME: ${WIREDIF_NMNAME}"
 
 # We might assign this MAC address to the bridge later
-#if [ "${WIREDIF_NMNAME}" != "" ]; then
-#	WIREDIF_MAC=$(nmcli connection show "${WIREDIF_NMNAME}" |grep "802-3-ethernet.mac-address:" | awk '{print $2}')
-#else
-	WIREDIF_MAC=$(nmcli device show "${WIREDIF}" |grep "GENERAL.HWADDR" | awk '{print $2}')
-#fi
+WIREDIF_MAC=$(nmcli device show "${WIREDIF}" |grep "GENERAL.HWADDR" | awk '{print $2}')
 echo "WIREDIF_MAC: ${WIREDIF_MAC}"
 
 function bridge_create() {
@@ -123,7 +119,22 @@ function bridge_del_wired_slave() {
 }
 
 function bridge_add_dummy_slave() {
-	nmcli connection add type bridge-slave ifname "${WIREDIF}" master "${BRIDGEIF}"
+  if [ $(nmcli connection show | grep "slave" | grep -c "${DUMMYIF}") -gt 0 ]; then
+		echo "${DUMMYIF} is already assigned to a slave interface"
+	else
+		RESULT=$(nmcli connection add type bridge-slave ifname "${DUMMYIF}" master "${BRIDGEIF}")
+		NEWIFNAME=$(echo "${RESULT}" | awk 'BEGIN{FS="Connection "}{print $2}' | awk '{print $1}' |tr -d "'")
+		echo "NEWIFNAME: ${NEWIFNAME}"
+		nmcli connection up ${NEWIFNAME}
+	fi
+}
+
+function bridge_del_dummy_slave() {
+	if [ $(nmcli connection show | grep "slave" | grep -c "${DUMMYIF}") -gt 0 ]; then
+		OLDIFNAME=$(nmcli connection show | grep "slave" | grep "${DUMMYIF}" | awk '{print $1}')
+		echo "Deleting slave connection ${OLDIFNAME}"
+		nmcli connection delete "${OLDIFNAME}"
+	fi
 }
 
 case "$2" in
@@ -148,13 +159,13 @@ case "$2" in
 				echo "Setting ${BRIDGEIF}'s MAC address"
 				nmcli connection modify "${BRIDGEIF}" bridge.mac-address "${WIREDIF_MAC}"
 			fi
-			
+
 			# Configure the bridge to get IP details from DHCP
 			if [ $(nmcli connection show "${BRIDGEIF}" | grep "ipv4.method" | grep -c "auto") -lt 1 ]; then
 				echo "Configuring ${BRIDGEIF} to configure IPv4 via DHCP"
 				nmcli connection modify "${BRIDGEIF}" ipv4.method auto
 			fi
-			
+
 			# Down the existing Wired interface's connection
 			if [ "${WIREDIF_NMNAME}" != "" ]; then
 				echo "Deleting conflicting connection ${WIREDIF_NMNAME}"
@@ -187,14 +198,21 @@ case "$2" in
 			#TODO: Convert this to mncli commands
 			if [ $(brctl show ${BRIDGEIF} | awk '{print $4}' | grep -c ${DUMMYIF}) -gt 0 ]; then
 				echo "Removing ${DUMMYIF} from bridge ${BRIDGEIF}"
-				brctl delif ${BRIDGEIF} ${DUMMYIF}
+				bridge_del_dummy_slave
 			fi
 
 		# If there is no wired interface, we will use the wireless interface
-		#TODO: All of the following needs to be rewritten to use nmcli instead of legacy commands
+		#TODO: All of the following needs to be rewritten to use nmcli instead of
+    #  legacy commands
 		elif [ `ifconfig ${WIRELESSIF} | grep -c 'UP.*RUNNING'` -gt 0 ]; then
 			if [ `ifconfig ${WIRELESSIF} | grep -c 'inet [[:digit:]]'` -gt 0 ]; then
 				echo "Wireless is up.  Going to NAT to ${WIRELESSIF} wireless interface."
+
+        # Configure the bridge to get IP details from DHCP
+  			if [ $(nmcli connection show "${BRIDGEIF}" | grep "ipv4.method" | grep -c "manual") -lt 1 ]; then
+  				echo "Configuring ${BRIDGEIF} to configure IPv4 via DHCP"
+  				nmcli connection modify "${BRIDGEIF}" ipv4.method manual ##TODO!
+  			fi
 
 				# We need the dummy0 interface.  If it doesn't
 				#  currently exist, create it by loading the "dummy"
@@ -204,30 +222,33 @@ case "$2" in
 					modprobe dummy
 				fi
 
-				# Sometimes the dummy interface exists but is not in a
-				#  "RUNNING" or "UP" state.
-				ifconfig ${DUMMYIF} up
-
-				# Make sure we're not bridged to the wired interface
-				#  any more.  Let's not accidently create any loops.
-				brctl delif ${BRIDGEIF} ${WIREDIF}
+				# Make sure we're not bridged to the wired interface  any more.  Let's
+        #  not accidently create any loops.
+        if [ $(brctl show ${BRIDGEIF} | awk '{print $4}' | grep -c ${WIREDIF}) -gt 0 ]; then
+          echo "Deleting ${WIREDIF} from ${BRIDGEIF}"
+				  bridge_del_wired_slave
+        fi
 
 				# Add the dummy interface to the bridge
-				brctl addif ${BRIDGEIF} ${DUMMYIF}
+        echo "Adding ${DUMMYIF} to ${BRIDGEIF}"
+        bridge_add_dummy_slave
 
-				# We don't need STP and having it can cause issues
-				brctl stp ${BRIDGEIF} off
-
-				# Configure an IP address on the bridge
-				ifconfig ${BRIDGEIF} up ${BRIDGEIP}
+        # Bring up the bridge
+  			if [ $(ifconfig ${BRIDGEIF} | grep -c 'UP.*RUNNING') -gt 0 ]; then
+  				echo "Bringing up ${BRIDGEIF}"
+  				nmcli connection up "${BRIDGEIF}"
+  			fi
 
 				#TODO: Add NAT iptables rules
-				iptables -t nat -A POSTROUTING -s ${BRIDGEIP} -o ${WIRELESSIF} -j MASQUERADE
+        if [ $(iptables -t nat -L -n | grep ${WIRELESSIF} | grep -c MASQUERADE) -lt 1 ]; then
+          echo "Adding MASQUERADE rule to iptables."
+				  iptables -t nat -A POSTROUTING -s ${BRIDGEIP} -o ${WIRELESSIF} -j MASQUERADE
+        fi
 
 				# Start an instance of dnsmasq
 				if [ -f /run/dnsmasq/dnsmasq-${BRIDGEIF}.pid ]; then
 					echo "Stopping existing dnsmasq instance."
-					kill `cat /run/dnsmasq/dnsmasq-${BRIDGEIF}.pid`
+					kill $(cat /run/dnsmasq/dnsmasq-${BRIDGEIF}.pid)
 				fi
 				echo "Starting dnsmasq on ${BRIDGEIF}."
 				/usr/sbin/dnsmasq --interface=${BRIDGEIF} --bind-interfaces --listen-address=127.0.2.1 --conf-dir=/etc/NetworkManager/dnsmasq.d,/etc/dnsmasq.d --local-service -x /run/dnsmasq/dnsmasq-${BRIDGEIF}.pid --resolv-file=/var/run/resolvconf/resolv.conf --dhcp-range=172.31.4.10,172.31.4.20,1h
@@ -249,12 +270,14 @@ case "$2" in
 		;;
 
 	"down")
-		# The following is disabled because it just starts an up->down-up loop.  We need a way to
-		#  know that the interface is going down because the user selected to have it down and
-		#  not because "down" is part of the process towards "up".
+		# The following is disabled because it just starts an up->down->up loop.  We
+    #  need a way to know that the interface is going down because the user
+    #  selected to have it down and not because "down" is part of the process
+    #  towards "up".
 		if [ "$1" == "xx${BRIDGEIF}" ]; then
 			echo "${BRIDGEIF} is going down.  Releasing ${WIREDIF} from ${BRIDGEIF} and setting it back to DHCP."
 			bridge_del_wired_slave
+      bridge_del_dummy_slave
 			bridge_delete
 			WIREDIF_NMNAME=$(nmcli connection show | grep '802-3-ethernet' | grep 'Wired' | grep "${WIREDIF}" | awk 'BEGIN{FS="  "}{print $1}')
 			echo "WIREDIF_NMNAME: ${WIREDIF_NMNAME}"

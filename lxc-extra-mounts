@@ -15,6 +15,7 @@ logger -p user.info "1: ${1}"
 logger -p user.info "2: ${2}"
 logger -p user.info "ACTION: ${ACTION}"
 
+exit 0
 #ls -la ${LXC_ROOTFS_MOUNT} | logger
 
 TMP_FILE=$(mktemp /tmp/.lxc-extra-mounts_${LXC_NAME}_XXXXX)

@@ -14,3 +14,4 @@ ln -s /usr/src/LXCScripts/lxc-enable-pulseaudio /usr/local/bin/lxc-enable-pulsea
 ln -s /usr/src/LXCScripts/lxc-run-X-app /usr/local/bin/lxc-run-X-app
 
 ln -s /usr/src/LXCScripts/usr-share-lxc-config-common.conf.d/01-extra-mounts.conf /usr/share/lxc/config/common.conf.d/01-extra-mounts.conf
+ln -s /usr/src/LXCScripts/usr-share-lxc-config-common.conf.d/02-enable-pulseaudio.conf /usr/share/lxc/config/common.conf.d/02-enable-pulseaudio.conf

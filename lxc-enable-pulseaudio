@@ -1,39 +1,100 @@
 #!/bin/bash
 
+# All output goes to both the console and syslog
+exec >  >(tee >(logger -t $(basename $0)))
+exec 2> >(tee >(logger -t $(basename $0)) >&2)
+
 ACTION="${3}"
 
 # This is a crappy hack but the passed environment variable is simply wrong
-LXC_ROOTFS_PATH=/var/lib/lxd/containers/${LXC_NAME}/rootfs/
+#LXC_ROOTFS_PATH=/var/lib/lxd/containers/${LXC_NAME}/rootfs/
+LXC_ROOTFS_PATH=/var/lib/lxd/storage-pools/zpool_SSD/containers/${LXC_NAME}/rootfs/
+
+LXC_ROOTFS_PATH=$(cat ${LXC_CONFIG_FILE} | grep '^lxc.rootfs = ' | awk 'BEGIN{FS=" = "}{print $2}')
+
+echo "${0} was executed!"
+echo "LXC_NAME: ${LXC_NAME}"
+echo "LXC_CONFIG_FILE: ${LXC_CONFIG_FILE}"
+echo "LXC_ROOTFS_MOUNT: ${LXC_ROOTFS_MOUNT}"
+echo "LXC_ROOTFS_PATH: ${LXC_ROOTFS_PATH}"
+echo "USER: $(whoami)"
+echo "GROUPS: $(groups)"
+echo "1: ${1}"
+echo "2: ${2}"
+echo "ACTION: ${ACTION}"
+
 
 # TODO: can we enumerate home directories and apply the fix for all?
-PULSE_USERS="shaun"
+PULSE_USERS="work"
 
 # Find the running PulseAudio server
 #TODO: Can there be more than one?  What if there are remote users?
 
-while read DIR; do
-	if [ $DIR -ge 1000 ]; then
-		PULSE_SERVER=$(find /run/user/${DIR} -xdev 2>/dev/null|grep 'pulse/native'|tail -1)
-	fi
-done < <(find /run/user -mindepth 1 -maxdepth 1 -type d | awk 'BEGIN{FS="/"}{print $NF}' | sort -n)
+TMP_FILE=$(mktemp /tmp/.lxc-enable-pulseaudio_${LXC_NAME}_XXXXX)
+echo "TMP_FILE: ${TMP_FILE}"
 
-if [ "${PULSE_SERVER}" == "" ]; then
-	logger -p user.error "Couldn't find a pulseaudio server to connect to.  Pulseaudio will not be available to this session."
-	exit 1
-else
-	logger -p user.info "Will connect to pulseaudio server at '${PULSE_SERVER}'."
+if [ "${ACTION}" == "mount" ]; then
+	#if [ "${ACTION}" == "mount" ]; then
+	#	LXC_ROOTFS_PATH="${LXC_ROOTFS_MOUNT}"
+	#fi
+
+	if [ ! -d "${LXC_ROOTFS_PATH}/home" ]; then
+		if [ ! -d "${LXC_ROOTFS_MOUNT}/home" ]; then
+			echo "Container path not found in '${LXC_ROOTFS_PATH}'.  Pulseaudio will be unavailable."
+			exit 0
+		fi
+		LXC_ROOTFS_PATH="${LXC_ROOTFS_MOUNT}"
+	fi
+
+	#/bin/bash -c "sqlite3 /var/lib/lxd/lxd.db \"SELECT * FROM containers_config WHERE key LIKE 'user.enable-pulseaudio%' AND container_id = (SELECT id FROM containers WHERE name = '${LXC_NAME}');\" >${TMP_FILE}" 2>&1| logger
+	
+	# Find native sockets for local pulseaudio servers
+	while read DIR; do
+		if [ $DIR -ge 1000 ]; then
+			PULSE_SERVER=$(find /run/user/${DIR} -xdev 2>/dev/null|grep 'pulse/native'|tail -1)
+		fi
+	done < <(find /run/user -mindepth 1 -maxdepth 1 -type d | awk 'BEGIN{FS="/"}{print $NF}' | sort -n)
+
+	if [ "${PULSE_SERVER}" == "" ]; then
+		echo "Couldn't find a pulseaudio server to connect to.  Pulseaudio will not be available to this session."
+		exit 0
+	else
+		echo "Will connect to pulseaudio server at '${PULSE_SERVER}'."
+	fi
+
+	# Reference: https://www.stgraber.org/2014/02/09/lxc-1-0-gui-in-containers
+	for PULSE_USER in $PULSE_USERS; do
+		PULSE_PATH="${LXC_ROOTFS_PATH}/home/${PULSE_USER}/.pulse_socket"
+		if [ -e "$LXC_ROOTFS_PATH/home/${PULSE_USER}/.pulse_socket" ]; then
+			echo "Pulseaudio socket '${PULSE_PATH}' already exists.  Deleting."
+			rm "${PULSE_PATH}"
+		fi
+		echo "Enabling pulseaudio for user by creating socket '${PULSE_PATH}'."
+		if [ ! -e "$PULSE_PATH" ] || [ -z "$(lsof -n $PULSE_PATH 2>&1)" ]; then
+			pactl -s "${PULSE_SERVER}" load-module module-native-protocol-unix auth-anonymous=1 socket=$PULSE_PATH
+		fi
+	done
+elif [ "${ACTION}" == "post-stop" ] || [ "${ACTION}" == "pre-start" ]; then
+	echo "post-stop action not yet implemented"
+	# Find native sockets for local pulseaudio servers
+	while read DIR; do
+		if [ $DIR -ge 1000 ]; then
+			PULSE_SERVER=$(find /run/user/${DIR} -xdev 2>/dev/null|grep 'pulse/native'|tail -1)
+		fi
+	done < <(find /run/user -mindepth 1 -maxdepth 1 -type d | awk 'BEGIN{FS="/"}{print $NF}' | sort -n)
+
+	if [ "${PULSE_SERVER}" == "" ]; then
+		echo "Unable to loacte a PulseAudio server to unload the module from."
+	else
+		MODULE=$(pactl -s "${PULSE_SERVER}" list |grep -B 10 isolation1 | grep '^Module' | tail -1 | awk 'BEGIN{FS="#"}{print $2}')
+		if [ "${MODULE}" != "" ]; then
+			echo "Unloading PulseAudio module ${MODULE}"
+			pactl -s "${PULSE_SERVER}" unload-module ${MODULE}
+		else
+			echo "No existing PulseAudio module was found to unload."
+		fi
+	fi
+	#pactl list - find the module number
+	#pactl -s "${PULSE_SERVER}" unload-module X
 fi
-
-# Reference: https://www.stgraber.org/2014/02/09/lxc-1-0-gui-in-containers/
-for PULSE_USER in $PULSE_USERS; do
-	PULSE_PATH=$LXC_ROOTFS_PATH/home/${PULSE_USER}/.pulse_socket
-	if [ -e "$LXC_ROOTFS_PATH/home/${PULSE_USER}/.pulse_socket" ]; then
-		logger -p user.info "Pulseaudio socket '${PULSE_PATH}' already exists.  Deleting."
-		rm "${PULSE_PATH}" | logger -p user.info
-	fi
-	logger -p user.info "Enabling pulseaudio for user by creating socket '${PULSE_PATH}'."
-	if [ ! -e "$PULSE_PATH" ] || [ -z "$(lsof -n $PULSE_PATH 2>&1)" ]; then
-		pactl -s "${PULSE_SERVER}" load-module module-native-protocol-unix auth-anonymous=1 socket=$PULSE_PATH 2>&1 | logger -p user.info
-	fi
-done
 exit 0

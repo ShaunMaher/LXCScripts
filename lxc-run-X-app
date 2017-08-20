@@ -43,6 +43,10 @@ if [ "${TARGET_CONTAINER}" == "" ]; then
   exit 1
 fi
 
+# Update the hostX11 profile to point at the correct X server
+DISPLAY_NUM=$(echo "${DISPLAY}" | sed 's/://g')
+lxc profile device set hostX11 "/tmp/.X11-unix/X0" "path" "/tmp/.X11-unix/X${DISPLAY_NUM}"
+
 # See if the target container is running
 if [ $(lxc list --fast | grep " ${TARGET_CONTAINER} " | grep -c " RUNNING ") -lt 1 ]; then
   echo "Starting container '${TARGET_CONTAINER}'." | tee >(logger -t lxc-run-X-app)
@@ -59,8 +63,8 @@ fi
 MY_PID=${$}
 echo "${MY_PID}" >>/tmp/.lxc-run-X-app-$(whoami)/${CONTAINER_NAME}
 
-echo "Configuring PulseAudio" | tee >(logger -t lxc-run-X-app)
-LXC_NAME="${CONTAINER_NAME}" /usr/local/bin/lxc-enable-pulseaudio
+#echo "Configuring PulseAudio" | tee >(logger -t lxc-run-X-app)
+#LXC_NAME="${CONTAINER_NAME}" /usr/local/bin/lxc-enable-pulseaudio
 
 # Run the Application
 lxc exec "${CONTAINER_NAME}" -- run-X-app "${CONTAINER_USER}" ${APP_COMMAND_LINE} | tee >(logger -t lxc-run-X-app)

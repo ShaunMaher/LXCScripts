@@ -21,10 +21,9 @@
 ##      detected automatically and then overridden by a config file in /etc.
 ##
 
-
 #TODO: I think we could find some of these settings automatically
-WIRELESSIF=wlp2s0
-WIREDIF=enp2s1
+WIRELESSIF=wlp3s0
+WIREDIF=ens9
 DUMMYIF=dummy0
 BRIDGEIF=brLAN
 BRIDGEIP=172.31.5.1/26
@@ -163,7 +162,8 @@ case "$2" in
 
 			# Clone ethernet interface's MAC
 			if [ $(nmcli connection show "${BRIDGEIF}" | grep -i -c "${WIREDIF_MAC}") -lt 1 ]; then
-				echo "Setting ${BRIDGEIF}'s MAC address"
+				CUR_MAC=$(nmcli connection show brLAN |grep 'bridge.mac-address' | awk '{print $2}')
+				echo "Setting ${BRIDGEIF}'s MAC address.  Current MAC address of ${BRIDGEIF}: ${CUR_MAC}"
 				nmcli connection modify "${BRIDGEIF}" bridge.mac-address "${WIREDIF_MAC}"
 			fi
 
@@ -184,7 +184,7 @@ case "$2" in
 			bridge_add_wired_slave
 
 			# Bring up the bridge
-			if [ $(ifconfig ${BRIDGEIF} | grep -c 'UP.*RUNNING') -gt 0 ]; then
+			if [ $(ifconfig ${BRIDGEIF} | grep -c 'UP.*RUNNING') -lt 1 ]; then
 				echo "Bringing up ${BRIDGEIF}"
 				nmcli connection up "${BRIDGEIF}"
 			fi

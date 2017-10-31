@@ -11,6 +11,9 @@ ACTION="${3}"
 LXC_ROOTFS_PATH=/var/lib/lxd/storage-pools/zpool_SSD/containers/${LXC_NAME}/rootfs/
 
 LXC_ROOTFS_PATH=$(cat ${LXC_CONFIG_FILE} | grep '^lxc.rootfs = ' | awk 'BEGIN{FS=" = "}{print $2}')
+if [ "${LXC_ROOTFS_PATH}" = "" ]; then
+	LXC_ROOTFS_PATH=$(cat ${LXC_CONFIG_FILE} | grep '^lxc.rootfs.path = ' | awk 'BEGIN{FS=" = dir:"}{print $2}')
+fi
 
 echo "${0} was executed!"
 echo "LXC_NAME: ${LXC_NAME}"
@@ -65,6 +68,7 @@ if [ "${ACTION}" == "mount" ]; then
 	# Reference: https://www.stgraber.org/2014/02/09/lxc-1-0-gui-in-containers
 	for PULSE_USER in $PULSE_USERS; do
 		PULSE_PATH="${LXC_ROOTFS_PATH}/home/${PULSE_USER}/.pulse_socket"
+		echo "PULSE_PATH: ${PULSE_PATH}"
 		if [ -e "$LXC_ROOTFS_PATH/home/${PULSE_USER}/.pulse_socket" ]; then
 			echo "Pulseaudio socket '${PULSE_PATH}' already exists.  Deleting."
 			rm "${PULSE_PATH}"

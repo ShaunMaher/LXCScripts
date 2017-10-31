@@ -156,8 +156,17 @@ case "$2" in
 
 		bridge_create
 
+		# An interface being "up" isn't enough to proove it's useful.  Make sure the
+		#  wired interface has internet connectivity.
+		WIREDIFUP=0
+		if [ $(ifconfig ${WIREDIF} | grep -c 'UP.*RUNNING') -gt 0 ]; then
+			if [ "$(ping -c 2 -W 1 -I ${WIREDIF} 8.8.8.8 >/dev/null 2>/dev/null; echo $?)" -eq 0 ]; then
+				WIREDIFUP=1
+			fi
+		fi
+
 		# If the wired interface is up, use it.
-		if [ `ifconfig ${WIREDIF} | grep -c 'UP.*RUNNING'` -gt 0 ]; then
+		if [ $WIREDIFUP -eq 1 ]; then
 			echo "Wired LAN is up.  Bridging ${WIREDIF} to ${BRIDGEIF}..."
 
 			# Clone ethernet interface's MAC
@@ -208,23 +217,23 @@ case "$2" in
 				bridge_del_dummy_slave
 			fi
 
-      if [ $(ifconfig -a | grep -c ${DUMMYIF}) -gt 0 ]; then
-        echo "Removing dummy interface ${DUMMYIF}"
-        modprobe -r dummy
-      fi
+			if [ $(ifconfig -a | grep -c ${DUMMYIF}) -gt 0 ]; then
+				echo "Removing dummy interface ${DUMMYIF}"
+				modprobe -r dummy
+			fi
 
 		# If there is no wired interface, we will use the wireless interface
 		#TODO: All of the following needs to be rewritten to use nmcli instead of
-    #  legacy commands
+		#  legacy commands
 		elif [ `ifconfig ${WIRELESSIF} | grep -c 'UP.*RUNNING'` -gt 0 ]; then
 			if [ `ifconfig ${WIRELESSIF} | grep -c 'inet [[:digit:]]'` -gt 0 ]; then
 				echo "Wireless is up.  Going to NAT to ${WIRELESSIF} wireless interface."
 
-        # Configure the bridge to get IP details from DHCP
-  			if [ $(nmcli connection show "${BRIDGEIF}" | grep "ipv4.method" | grep -c "manual") -lt 1 ] ; then
-  				echo "Configuring ${BRIDGEIF} to configure IPv4 via DHCP"
-  				nmcli connection modify "${BRIDGEIF}" ipv4.method manual ipv4.addresses ${BRIDGEIP}
-  			fi
+				# Configure the bridge to get IP details from DHCP
+  				if [ $(nmcli connection show "${BRIDGEIF}" | grep "ipv4.method" | grep -c "manual") -lt 1 ] ; then
+  					echo "Configuring ${BRIDGEIF} to configure IPv4 via DHCP"
+  					nmcli connection modify "${BRIDGEIF}" ipv4.method manual ipv4.addresses ${BRIDGEIP}
+  				fi
 
 				# We need the dummy0 interface.  If it doesn't
 				#  currently exist, create it by loading the "dummy"
@@ -235,27 +244,26 @@ case "$2" in
 				fi
 
 				# Make sure we're not bridged to the wired interface  any more.  Let's
-        #  not accidently create any loops.
-        if [ $(brctl show ${BRIDGEIF} | awk '{print $4}' | grep -c ${WIREDIF}) -gt 0 ]; then
-          echo "Deleting ${WIREDIF} from ${BRIDGEIF}"
-				  bridge_del_wired_slave
-        fi
+				#  not accidently create any loops.
+				if [ $(brctl show ${BRIDGEIF} | awk '{print $4}' | grep -c ${WIREDIF}) -gt 0 ]; then
+					echo "Deleting ${WIREDIF} from ${BRIDGEIF}"
+					bridge_del_wired_slave
+				fi
 
 				# Add the dummy interface to the bridge
-        echo "Adding ${DUMMYIF} to ${BRIDGEIF}"
-        bridge_add_dummy_slave
-
-        # Bring up the bridge
-  			if [ $(ifconfig ${BRIDGEIF} | grep -c 'UP.*RUNNING') -gt 0 ]; then
-  				echo "Bringing up ${BRIDGEIF}"
-  				nmcli connection up "${BRIDGEIF}"
-  			fi
+				echo "Adding ${DUMMYIF} to ${BRIDGEIF}"
+				bridge_add_dummy_slave
+				# Bring up the bridge
+				if [ $(ifconfig ${BRIDGEIF} | grep -c 'UP.*RUNNING') -gt 0 ]; then
+	  				echo "Bringing up ${BRIDGEIF}"
+					nmcli connection up "${BRIDGEIF}"
+				fi
 
 				#TODO: Add NAT iptables rules
-        if [ $(iptables -t nat -L -n | grep ${WIRELESSIF} | grep -c MASQUERADE) -lt 1 ]; then
-          echo "Adding MASQUERADE rule to iptables."
-				  iptables -t nat -A POSTROUTING -s ${BRIDGEIP} -o ${WIRELESSIF} -j MASQUERADE
-        fi
+				if [ $(iptables -t nat -L -n | grep ${WIRELESSIF} | grep -c MASQUERADE) -lt 1 ]; then
+					echo "Adding MASQUERADE rule to iptables."
+					iptables -t nat -A POSTROUTING -s ${BRIDGEIP} -o ${WIRELESSIF} -j MASQUERADE
+				fi
 
 				# Start an instance of dnsmasq
 				if [ -f /run/dnsmasq/dnsmasq-${BRIDGEIF}.pid ]; then
@@ -263,7 +271,16 @@ case "$2" in
 					kill $(cat /run/dnsmasq/dnsmasq-${BRIDGEIF}.pid)
 				fi
 				echo "Starting dnsmasq on ${BRIDGEIF}."
-				/usr/sbin/dnsmasq --interface=${BRIDGEIF} --bind-interfaces --listen-address=127.0.2.1 --conf-dir=/etc/NetworkManager/dnsmasq.d,/etc/dnsmasq.d --local-service -x /run/dnsmasq/dnsmasq-${BRIDGEIF}.pid --resolv-file=/var/run/resolvconf/resolv.conf --dhcp-range=${BRIDGEDHCPRANGE}
+				/usr/sbin/dnsmasq \
+					--interface=${BRIDGEIF} \
+					--bind-interfaces \
+					--listen-address=127.0.2.1 \
+					--conf-dir=/etc/NetworkManager/dnsmasq.d,/etc/dnsmasq.d \
+					--local-service \
+					-x \
+					/run/dnsmasq/dnsmasq-${BRIDGEIF}.pid \
+					--resolv-file=/var/run/resolvconf/resolv.conf \
+					--dhcp-range=${BRIDGEDHCPRANGE}
 			else
 				#TODO: wireless is "UP" but has no IP.  Setup for "Host Only".
 				echo "Wireless is \"UP\" but has no IP.  Setup for \"Host Only\"".
@@ -283,13 +300,13 @@ case "$2" in
 
 	"down")
 		# The following is disabled because it just starts an up->down->up loop.  We
-    #  need a way to know that the interface is going down because the user
-    #  selected to have it down and not because "down" is part of the process
-    #  towards "up".
+		#  need a way to know that the interface is going down because the user
+		#  selected to have it down and not because "down" is part of the process
+		#  towards "up".
 		if [ "$1" == "xx${BRIDGEIF}" ]; then
 			echo "${BRIDGEIF} is going down.  Releasing ${WIREDIF} from ${BRIDGEIF} and setting it back to DHCP."
 			bridge_del_wired_slave
-      bridge_del_dummy_slave
+			bridge_del_dummy_slave
 			bridge_delete
 			WIREDIF_NMNAME=$(nmcli connection show | grep '802-3-ethernet' | grep 'Wired' | grep "${WIREDIF}" | awk 'BEGIN{FS="  "}{print $1}')
 			echo "WIREDIF_NMNAME: ${WIREDIF_NMNAME}"

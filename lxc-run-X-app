@@ -45,7 +45,7 @@ fi
 
 # Update the hostX11 profile to point at the correct X server
 DISPLAY_NUM=$(echo "${DISPLAY}" | sed 's/://g')
-lxc profile device set hostX11 "/tmp/.X11-unix/X0" "path" "/tmp/.X11-unix/X${DISPLAY_NUM}"
+lxc profile device set hostX11 "/tmp/.X11-unix/X0" "source" "/tmp/.X11-unix/X${DISPLAY_NUM}"
 
 # See if the target container is running
 if [ $(lxc list --fast | grep " ${TARGET_CONTAINER} " | grep -c " RUNNING ") -lt 1 ]; then
